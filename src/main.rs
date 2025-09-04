@@ -1,19 +1,26 @@
 #[macro_use] extern crate rocket;
 
 use std::env;
-use gaia_api::{routes, db};
+use gaia_api::routes;
 use dotenvy::dotenv;
-use rocket::fairing::AdHoc;
+use sqlx::postgres::PgPoolOptions;
 
 #[launch]
 async fn rocket() -> _ {
     dotenv().ok();
     
-    // Create the database pool
-    let pool = db::create_pool()
+    // Connect to PostgreSQL
+    let pool: sqlx::Pool<sqlx::Postgres> = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(
+            env::var("DATABASE_URL")
+            .expect("Database URL isn't specified yet.")
+            .as_str()
+        )
         .await
-        .expect("Failed to create database pool");
-    
+        .expect("Connection failed");
+                
+        
     rocket::build()
         .manage(pool)
         .configure(rocket::Config::figment().merge((
