@@ -1,16 +1,11 @@
 // Dependencies
 use rocket::{
-    get,
-    http::Status,
-    post,
-    serde::{Deserialize, Serialize, json::Json},
-    State,
+    catch, get, http::Status, post, serde::{json::Json, Deserialize, Serialize}, Request, State
 };
 use sha3::{Digest, Sha3_256};
-use hex;
 use crate::{model::User, util::generate_token};
-
-
+use hex;
+use log;
 
 // DATA SCHEMA
 #[derive(Serialize, Deserialize)]
@@ -47,7 +42,7 @@ pub async fn login(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::
     let user_data = match sqlx_query_result {
         Ok(user_data) => user_data,
         Err(err) => {
-            println!("There's an error when trying to get user data, error: {}", err.to_string());
+            log::error!("There's an error when trying to get user data, error: {}", err.to_string());
             return Err(Status::InternalServerError);
         }
     };
@@ -76,6 +71,7 @@ pub async fn login(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::
     
     // Verify the password
     if hash_result != user_data.password {
+        log::warn!("There's a failed attempt to login for user: {}", credentials.username);
         return Err(Status::Unauthorized);
     }
 
@@ -92,7 +88,7 @@ pub async fn login(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::
     match token_raw_result {
         Ok(_) => (),
         Err(err) => {
-            println!("There's an error when trying to insert token data. Error: {}", err.to_string());
+            log::error!("There's an error when trying to insert token data. Error: {}", err.to_string());
             return Err(Status::InternalServerError);
         }
     }
