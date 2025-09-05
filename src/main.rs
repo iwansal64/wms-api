@@ -76,4 +76,10 @@ async fn rocket() -> _ {
             routes::get_user,
             routes::login
         ])
+        // Register catchers
+        .register("/", catchers![
+            routes::not_found,
+            routes::unauthorized,
+            routes::too_many_requests
+        ])
 }
