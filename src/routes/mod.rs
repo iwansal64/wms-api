@@ -57,7 +57,7 @@ pub async fn login(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::
     };
 
     
-    // Get the hash version of password given
+    // Get the hash version of the given password
     let hash_result;
     {
         let mut hasher = Sha3_256::new();
@@ -79,7 +79,7 @@ pub async fn login(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::
     // Generate token and store it
     let generated_token = generate_token().iter().collect::<String>();
     let token_raw_result = sqlx::query!(
-        "INSERT INTO token(token) VALUES ($1)",
+        "INSERT INTO access_token(token) VALUES ($1)",
         generated_token
     )
     .execute(db.inner())
