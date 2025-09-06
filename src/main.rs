@@ -72,14 +72,14 @@ async fn rocket() -> _ {
         )
         // Put all of the routes
         .mount("/", routes![
-            routes::get_connection,
-            routes::get_user,
-            routes::login
+            routes::connection::get,
+            routes::user::this::get,
+            routes::user::login::post
         ])
         // Register catchers
         .register("/", catchers![
-            routes::not_found,
-            routes::unauthorized,
-            routes::too_many_requests
+            routes::catchers::not_found,
+            routes::catchers::unauthorized,
+            routes::catchers::too_many_requests
         ])
 }
