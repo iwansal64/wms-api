@@ -1,5 +1,5 @@
 use rocket::{
-    http::Status, post, serde::{json::Json, Deserialize, Serialize}, State
+    http::{Cookie, CookieJar, Status}, post, serde::{json::Json, Deserialize, Serialize}, State
 };
 
 use crate::{model::User, util::generate_token};
@@ -7,10 +7,6 @@ use sha3::{Digest, Sha3_256};
 use hex;
 use log;
 
-#[derive(Serialize, Deserialize)]
-pub struct LoginResponseType {
-    token: String,
-}
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -20,7 +16,7 @@ pub struct LoginRequest {
 
 // FUNCTIONS
 #[post("/user/login", data = "<credentials>")]
-pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::Postgres>>) -> Result<Json<LoginResponseType>, Status> {
+pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::Postgres>>, cookies: &CookieJar<'_>) -> Result<(), Status> {
     // Get the user data from database
     let sqlx_query_result = sqlx::query_as!(
         User,
@@ -71,11 +67,15 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
     }
 
 
-    // Generate token and store it
+    // Generate token
     let generated_token = generate_token().iter().collect::<String>();
+
+
+    // Update access token in database
     let token_raw_result = sqlx::query!(
-        "INSERT INTO access_token(token) VALUES ($1)",
-        generated_token
+        "UPDATE users SET access_token = $1 WHERE id = $2",
+        generated_token,
+        user_data.id
     )
     .execute(db.inner())
     .await;
@@ -87,10 +87,18 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
             return Err(Status::InternalServerError);
         }
     }
+
+
+    // Store access token to the cookie
+    cookies.add(
+        Cookie::build(("access_token", generated_token))
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .max_age(rocket::time::Duration::days(14))
+    );
     
 
     // Return the token
-    Ok(Json(LoginResponseType {
-      token: generated_token
-    }))
+    Ok(())
 }
