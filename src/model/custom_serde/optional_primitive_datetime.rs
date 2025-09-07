@@ -5,7 +5,7 @@ use serde::{de, Serializer, Deserializer};
 pub fn serialize<S>(dt: &Option<PrimitiveDateTime>, serializer: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer {
-  let formatter = format_description::parse("[year]-[month]-[date]T[hour]:[minute]:[second]").unwrap();
+  let formatter = format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]").unwrap();
   match dt {
     Some(value) => serializer.serialize_str(value.format(&formatter).unwrap().as_str()),
     None => serializer.serialize_none()

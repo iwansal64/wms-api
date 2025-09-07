@@ -1,7 +1,7 @@
 use rocket::time::PrimitiveDateTime;
 use serde::{Serialize, Deserialize};
 use sqlx::FromRow;
-mod custom_serde;
+pub mod custom_serde;
 
 #[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
 pub struct User {
