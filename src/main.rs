@@ -26,7 +26,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
 
 #[launch]
 async fn rocket() -> _ {
-    // Initialize
+    // Initializions
     dotenv().ok();
     setup_logger().expect("There's an error when trying to setup logger");
     
@@ -74,7 +74,8 @@ async fn rocket() -> _ {
         .mount("/", routes![
             routes::connection::get,
             routes::user::this::get,
-            routes::user::login::post
+            routes::user::login::post,
+            routes::user::verify_email::post
         ])
         // Register catchers
         .register("/", catchers![

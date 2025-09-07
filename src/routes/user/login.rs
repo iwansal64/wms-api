@@ -35,7 +35,7 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
         Err(err) => {
             log::error!("There's an error when trying to get user data, error: {}", err.to_string());
             return Err(Status::InternalServerError);
-        }
+        }  
     };
 
     
@@ -46,6 +46,10 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
             return Err(Status::NotFound);
         }
     };
+
+    if let None = user_data.password {
+        return Err(Status::NotFound);
+    }
 
     
     // Get the hash version of the given password
@@ -61,7 +65,7 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
 
     
     // Verify the password
-    if hash_result != user_data.password {
+    if hash_result != user_data.password.unwrap() {
         log::warn!("There's a failed attempt to login for user: {}", credentials.username);
         return Err(Status::Unauthorized);
     }

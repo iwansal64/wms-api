@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, TimeZone, Utc};
+use sqlx::FromRow;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DateTimeSQLX {
@@ -18,12 +19,12 @@ impl From<sqlx::types::time::PrimitiveDateTime> for DateTimeSQLX {
   }
 }
 
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
 pub struct User {
   pub id: String,
-  pub username: String,
-  pub password: String,
+  pub username: Option<String>,
+  pub password: Option<String>,
   pub email: String,
-  pub created_at: DateTimeSQLX
+  pub created_at: DateTimeSQLX,
+  pub verification_token: Option<String>
 }
