@@ -75,7 +75,8 @@ async fn rocket() -> _ {
             routes::connection::get,
             routes::user::this::get,
             routes::user::login::post,
-            routes::user::verify_email::post
+            routes::user::verify_email::post,
+            routes::user::registration::post
         ])
         // Register catchers
         .register("/", catchers![

@@ -1,23 +1,7 @@
+use rocket::time::PrimitiveDateTime;
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, TimeZone, Utc};
 use sqlx::FromRow;
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct DateTimeSQLX {
-  inner: DateTime<Utc>
-}
-
-impl From<DateTime<Utc>> for DateTimeSQLX {
-  fn from(dt: DateTime<Utc>) -> Self {
-    DateTimeSQLX { inner: dt } 
-  }
-}
-
-impl From<sqlx::types::time::PrimitiveDateTime> for DateTimeSQLX {
-  fn from(value: sqlx::types::time::PrimitiveDateTime) -> Self {
-    DateTimeSQLX { inner: Utc.timestamp_opt(value.assume_utc().unix_timestamp(), 0).unwrap() }
-  }
-}
+mod custom_serde;
 
 #[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
 pub struct User {
@@ -25,6 +9,11 @@ pub struct User {
   pub username: Option<String>,
   pub password: Option<String>,
   pub email: String,
-  pub created_at: DateTimeSQLX,
-  pub verification_token: Option<String>
+  pub verification_token: Option<String>,
+  pub access_token: Option<String>,
+
+  #[serde(with = "custom_serde::primitive_datetime")]
+  pub created_at: PrimitiveDateTime,
+  #[serde(with = "custom_serde::optional_primitive_datetime")]
+  pub access_token_expire: Option<PrimitiveDateTime>
 }
