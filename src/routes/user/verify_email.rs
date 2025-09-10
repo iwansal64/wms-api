@@ -22,8 +22,8 @@ pub async fn post(
     db: &State<sqlx::postgres::PgPool>,
 ) -> Result<(), Status> {
     // Generate verification token and user id
-    let generated_verification_token: String = generate_token().iter().collect();
-    let generated_id: String = generate_token().iter().collect();
+    let generated_verification_token: String = generate_token();
+    let generated_id: String = generate_token();
 
 
     // Setting up email message

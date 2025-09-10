@@ -1,6 +1,7 @@
 use rocket::{
-    http::{Cookie, CookieJar, Status}, post, serde::{json::Json, Deserialize, Serialize}, State
+    http::{Cookie, CookieJar, Status}, post, serde::{json::Json, Deserialize}, State
 };
+use sqlx::{Pool, Postgres};
 
 use crate::{model::User, util::generate_token};
 use sha3::{Digest, Sha3_256};
@@ -16,7 +17,7 @@ pub struct LoginRequest {
 
 // FUNCTIONS
 #[post("/user/login", data = "<credentials>")]
-pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::Postgres>>, cookies: &CookieJar<'_>) -> Result<(), Status> {
+pub async fn post(credentials: Json<LoginRequest>, db: &State<Pool<Postgres>>, cookies: &CookieJar<'_>) -> Result<(), Status> {
     // Get the user data from database
     let sqlx_query_result = sqlx::query_as!(
         User,
@@ -68,7 +69,7 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<sqlx::Pool<sqlx::P
 
 
     // Generate token
-    let generated_token = generate_token().iter().collect::<String>();
+    let generated_token: String = generate_token();
 
 
     // Update access token in database

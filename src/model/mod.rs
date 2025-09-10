@@ -17,3 +17,17 @@ pub struct User {
   #[serde(with = "custom_serde::optional_primitive_datetime")]
   pub access_token_expire: Option<PrimitiveDateTime>
 }
+
+#[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
+pub struct Device {
+  pub id: String,
+  #[serde(with = "custom_serde::primitive_datetime")]
+  pub created_at: PrimitiveDateTime
+}
+
+#[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
+pub struct Connection {
+  pub id: String,
+  pub user_id: String,
+  pub device_id: String
+}

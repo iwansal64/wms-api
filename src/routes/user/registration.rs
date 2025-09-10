@@ -51,7 +51,7 @@ pub async fn post(registration_data: Json<RegistrationRequestType>, cookies: &Co
 
 
   // Generate access token
-  let generated_access_token: String = generate_token().iter().collect();
+  let generated_access_token: String = generate_token();
   let current_date: OffsetDateTime = OffsetDateTime::now_utc();
   let access_token_expire_date: PrimitiveDateTime = datetime!(2000-01-01 00:00:00).replace_date(current_date.date().saturating_add(time::Duration::days(14)));
   

@@ -1,10 +1,12 @@
 #[macro_use] extern crate rocket;
 
 use std::env;
-use gaia_api::routes;
+use gaia_api::{routes, types::WebSocketManager, websocket};
 use dotenvy::dotenv;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use tokio::spawn;
 
+ 
 fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         // customize logging format
@@ -40,7 +42,7 @@ async fn rocket() -> _ {
         )
         .await;
 
-    let pool: sqlx::Pool<sqlx::Postgres> = match pool {
+    let pool: Pool<Postgres> = match pool {
         Ok(res) => res,
         Err(err) => {
             log::error!("Error when setting up database connection. Error: {}", err.to_string());
@@ -48,10 +50,31 @@ async fn rocket() -> _ {
         }
     };
 
+    let ws_manager: WebSocketManager = WebSocketManager::new();
+
+    let ws_manager_instance: WebSocketManager = ws_manager.clone();
+    let pool_instance: Pool<Postgres> = pool.clone();
+    let ws_manager_instance_2: WebSocketManager = ws_manager.clone();
+    spawn(async move {
+        tokio::select! {
+            _ = websocket::core::run_websocket_server(ws_manager_instance, pool_instance) => (),
+            _ = tokio::signal::ctrl_c() => {
+                let shutdown_result = ws_manager_instance_2.shutdown().await;
+                match shutdown_result {
+                    Ok(_) => (),
+                    Err(err) => {
+                        log::error!("There's an error when shutting down all of the websocket connection. Error: {}", err.to_string());
+                    }
+                }
+            }
+        }
+    });
     
     rocket::build()
         // Setting up postgresql pool for database connection
         .manage(pool)
+        // Setting up web socket manager for web socket connection
+        .manage(ws_manager)
         // Konfigurasi rocket
         .configure(
             rocket::Config::figment()
@@ -72,7 +95,6 @@ async fn rocket() -> _ {
         )
         // Put all of the routes
         .mount("/", routes![
-            routes::connection::get,
             routes::user::this::get,
             routes::user::login::post,
             routes::user::verify_email::post,
