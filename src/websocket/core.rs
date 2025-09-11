@@ -263,7 +263,6 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
  
   
   // Listen for incoming messages
-  log::warn!("User Senders Before: {:?}", ws_manager.user_senders.write().await);
   while let Some(raw_message) = ws_read.next().await {
     match raw_message {
       Ok(message) => {
@@ -308,5 +307,9 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   }
   
   // After connection closed
-  log::warn!("User Senders After: {:?}", ws_manager.user_senders.write().await);
+  match client_type {
+    "user" => ws_manager.remove_user_connection(&room_id, &ws_client_address).await.unwrap(),
+    "device" => ws_manager.remove_device_connection(&room_id).await.unwrap(),
+    _ => ()
+  }
 }

@@ -136,4 +136,35 @@ impl WebSocketManager {
     }
     Ok(())
   }
+
+  pub async fn remove_user_connection(&self, room_id: &str, addr: &str) -> Result<(), String> {
+    // Lock the user senders write mode
+    let mut user_senders_lock = self.user_senders.write().await;
+    let user_senders_by_addr = user_senders_lock.get_mut(room_id);
+
+    let user_senders_by_addr = match user_senders_by_addr {
+      Some(data) => data,
+      None => {
+        return Err(format!("There's no user data with room_id: {}", room_id));
+      }
+    };
+
+    let result = user_senders_by_addr.remove(addr);
+
+    match result {
+      Some(_) => Ok(()),
+      None => Err(format!("There's no user data with addr: {} in this room_id: {}", addr, room_id))
+    }
+  }
+
+  pub async fn remove_device_connection(&self, room_id: &str) -> Result<(), String> {
+    // Lock the user senders write mode
+    let mut device_senders_lock = self.device_senders.write().await;
+    let result = device_senders_lock.remove(room_id);
+
+    match result {
+      Some(_) => Ok(()),
+      None => Err(format!("There's no device data with room_id: {}", room_id))
+    }
+  }
 }
