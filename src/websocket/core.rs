@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, net::SocketAddr, sync::{Arc, Mutex}};
 use futures_util::StreamExt;
-use tokio_tungstenite::{tungstenite::protocol::{frame::coding::CloseCode, CloseFrame}, WebSocketStream};
-use crate::{model::User, types::WebSocketManager};
+use tokio_tungstenite::{tungstenite::{self, protocol::{frame::coding::CloseCode, CloseFrame}}, WebSocketStream};
+use crate::{model::{User, Connection, Device}, types::WebSocketManager};
 use http::{Request, Response};
 use sqlx::{Pool, Postgres};
 use tokio::net::{TcpListener, TcpStream};
@@ -13,12 +13,12 @@ pub async fn run_websocket_server(ws_manager: WebSocketManager, pool: Pool<Postg
     &addr
   )
   .await
-  .expect(format!("Can't listen to the address {}", addr).as_str());
+  .expect(format!("Can't listen to the address wss://{}", addr).as_str());
 
   log::warn!("Web Socket listenning to wss://{}", addr);
   
   while let Ok((stream, addr)) = listener.accept().await {
-    log::warn!("New WebSocket: {:?}", addr.ip());
+    log::warn!("({}:{}) WebSocket Client Connected", addr.ip(), addr.port());
     let ws_manager_instance: WebSocketManager = ws_manager.clone();
     let pool_instance: Pool<Postgres> = pool.clone();
     tokio::spawn(handle_websocket_connection(stream, ws_manager_instance, pool_instance, addr));
@@ -28,7 +28,7 @@ pub async fn run_websocket_server(ws_manager: WebSocketManager, pool: Pool<Postg
 fn handle_websocket_header_inspection(request: &Request<()>) -> Result<String, Response<Option<String>>> {
   // Get all of the cookies
   let mut cookies = HashMap::new();
-        
+
   for (name, value) in request.headers() {
       if name.as_str().to_lowercase() != "cookie" {
         continue;
@@ -60,7 +60,7 @@ fn handle_websocket_header_inspection(request: &Request<()>) -> Result<String, R
 }
 
 async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketManager, pool: Pool<Postgres>, addr: SocketAddr) {
-  // Try to handle cookies and get the access token
+  //? Try to handle cookies and get the access token
   let access_token: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
   let access_token_instance = access_token.clone();
   let ws_stream = tokio_tungstenite::accept_hdr_async(
@@ -85,7 +85,7 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   .await;
 
 
-  // Check if there's an error when accepting header of Web Socket initalization connection
+  //? Check if there's an error when accepting header of Web Socket initalization connection
   let mut ws_stream: WebSocketStream<TcpStream> = match ws_stream {
     Ok(ws) => ws,
     Err(err) => {
@@ -95,7 +95,7 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   };
 
 
-  // Verify access token
+  //? Get the access token
   let safe_access_token;
   {
     let raw_safe_access_token: Option<String> = match access_token.lock() {
@@ -118,8 +118,9 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   }
 
 
-  // Get user data
-  let user_data = sqlx::query_as!(
+  //? Get user or device data
+  let mut client_data: Option<either::Either<User, Device>> = None;
+  let raw_user_data = sqlx::query_as!(
     User,
     "SELECT * FROM users WHERE access_token = $1",
     safe_access_token
@@ -127,8 +128,8 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   .fetch_optional(&pool)
   .await;
 
-  // Check if there's any error when trying to get user data from token
-  let user_data = match user_data {
+  //? Check if there's any error when trying to get user data from token
+  let user_data = match raw_user_data {
     Ok(data) => data,
     Err(err) => {
       log::error!("There's an error when trying to get user data. Error: {}", err.to_string());
@@ -141,27 +142,128 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
     }
   };
 
-  // Check if there's user data
+  //? Check if we get user data from the access token
   match user_data {
-    Some(_) => (),
+    Some(data) => {
+      client_data = Some(either::Either::Left(data));
+    },
+    None => ()
+  };
+
+  if client_data.is_none() {
+    let raw_device_data = sqlx::query_as!(
+      Device,
+      "SELECT * FROM devices WHERE access_token = $1",
+      safe_access_token
+    )
+    .fetch_optional(&pool)
+    .await;
+  
+    // Check if there's any error when trying to get user data from token
+    let device_data = match raw_device_data {
+      Ok(data) => data,
+      Err(err) => {
+        log::error!("There's an error when trying to get user data. Error: {}", err.to_string());
+  
+        ws_stream.close(Some(CloseFrame {
+          code: CloseCode::Error,
+          reason: "There's an unexpected error".into()
+        })).await.unwrap();
+        return;
+      }
+    };
+
+    match device_data {
+      Some(data) => {
+        client_data = Some(either::Either::Right(data));
+      },
+      None => ()
+    };
+  }
+
+  //? Check if there's device or user with that ID
+  let client_data: either::Either<User, Device> = match client_data {
+    Some(data) => data,
     None => {
-      log::warn!("Unauthorized access detected. Closed the connection from: {}", addr.ip());
+      log::warn!("Unauthorized access detected. Closing the connection.");
       ws_stream.close(Some(CloseFrame {
         code: CloseCode::Policy,
         reason: "You're unauthorized".into()
       })).await.unwrap();
       return;
     }
+  };
+  
+
+  //? Get the connection room id
+  let connection_data: Result<Option<Connection>, sqlx::Error>;
+  let client_type: &str;
+  match client_data {
+    either::Either::Left(user) => {
+      // Get the connection ID query from user data
+      client_type = "user";
+      connection_data = sqlx::query_as!(
+        Connection,
+        "SELECT * FROM connections WHERE user_id = $1",
+        user.id
+      )
+      .fetch_optional(&pool)
+      .await;
+    },
+    either::Either::Right(device) => {
+      // Get the connection ID query from device data
+      client_type = "device";
+      connection_data = sqlx::query_as!(
+        Connection,
+        "SELECT * FROM connections WHERE device_id = $1",
+        device.id
+      )
+      .fetch_optional(&pool)
+      .await;
+    }
   }
+
+  //? Check if there's any connection created just yet for the client?
+  let connection_data: Option<Connection> = match connection_data {
+    Ok(res) => res,
+    Err(err) => {
+      log::error!("There's an error when trying to get connection data. Error: {}", err.to_string());
+      ws_stream.close(Some(CloseFrame {
+        code: CloseCode::Error,
+        reason: "There's an unexpected error.".into()
+      })).await.unwrap();
+      return;
+    }
+  };
+
+  //? Fetch the connection ID
+  let room_id: String = match connection_data {
+    Some(data) => data.room_id,
+    None => {
+      log::warn!("No connection formed yet");
+      ws_stream.close(Some(CloseFrame {
+        code: CloseCode::Policy,
+        reason: "You're unauthorized".into()
+      })).await.unwrap();
+      return;
+    }
+  };
 
 
   let (ws_write, mut ws_read) = ws_stream.split();
+  let ws_client_address: String = format!("{}:{}", addr.ip(), addr.port());
 
   // Add connection to the list
-  ws_manager.new_connection(safe_access_token.clone(), ws_write).await.unwrap();
-
+  if client_type == "user" {
+    ws_manager.new_user_connection(room_id.clone(), ws_client_address.clone(), ws_write).await.unwrap();
+  }
+  else {
+    ws_manager.new_device_connection(room_id.clone(), ws_write).await.unwrap();
+  }
+ 
   
   // Listen for incoming messages
+  log::warn!("User Senders Before: {:?}", ws_manager.user_senders.write().await);
   while let Some(raw_message) = ws_read.next().await {
     match raw_message {
       Ok(message) => {
@@ -173,21 +275,38 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
             }
           };
 
-          if text.starts_with("data") {
-            println!("There's data : {}", text);
-          }
-          else if text.starts_with("test") {
-            ws_manager.send_message(safe_access_token.clone(), String::from("TEST")).await.unwrap();
-          }
+          if client_type == "device" && text.starts_with("data") {
+            let data = text.split(":").collect::<Vec<&str>>()[1];
+            log::warn!("Device is currently sending data: {}", data);
+            let send_result = ws_manager.send_user_message(&room_id, data).await;
+
+            match send_result {
+              Ok(_) => {
+                log::warn!("Data has been successfully sent!");
+              },
+              Err(err) => {
+                log::error!("There's an error when trying to send sensor data. Error: {}", err.to_string());
+              }
+            }
+          } 
           else {
-            println!("There's random : {}", text);
+            log::warn!("Get data from a {}: {}", client_type, text);
           }
         }
       },
       Err(err) => {
-        log::error!("There's an error found in a message. Error: {}", err.to_string());
+        match err {
+          tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed | tungstenite::Error::Io(_) => {
+            log::warn!("({}) Conmnection closed", ws_client_address);
+          },
+          _ => {
+            log::error!("There's an error found in a message. Error: {}", err.to_string());
+          }
+        }
       }
     }
   }
   
+  // After connection closed
+  log::warn!("User Senders After: {:?}", ws_manager.user_senders.write().await);
 }
