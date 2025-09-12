@@ -1,6 +1,6 @@
 #[macro_use] extern crate rocket;
 
-use std::env;
+use std::{env, net::IpAddr};
 use wms_api::{routes, types::WebSocketManager, websocket};
 use dotenvy::dotenv;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
@@ -78,6 +78,14 @@ async fn rocket() -> _ {
         // Konfigurasi rocket
         .configure(
             rocket::Config::figment()
+            // Setting up address
+            .merge((
+                "address",
+                env::var("API_ADDRESS")
+                .unwrap_or(String::from("127.0.0.1"))
+                .parse::<IpAddr>()
+                .expect("API_ADDRESS must be a valid IP address"),
+            ))
             // Setting up port
             .merge((
                 "port",
