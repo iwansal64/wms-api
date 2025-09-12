@@ -69,7 +69,7 @@ pub async fn post(credentials: Json<LoginRequest>, db: &State<Pool<Postgres>>, c
 
 
     // Generate token
-    let generated_token: String = generate_token();
+    let generated_token: String = generate_token(20);
 
 
     // Update access token in database

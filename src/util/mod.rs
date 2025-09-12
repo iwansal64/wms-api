@@ -1,11 +1,11 @@
 use rand::{self, Rng};
 
-pub fn generate_token() -> String {
+pub fn generate_token(length: u8) -> String {
     let mut rng = rand::rng();
 
     let mut token: String = String::new();
 
-    for _ in 0..20 {
+    for _ in 0..length {
       let mut choosen_ascii_code = 65u8 + rng.random_range(0..52);
       if choosen_ascii_code >= (65u8 + 26) {
         choosen_ascii_code += 6;
