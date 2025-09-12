@@ -1,6 +1,6 @@
 use std::env;
 
-use crate::util::{generate_token, is_duplicated_error};
+use crate::{model::User, util::{generate_token, is_duplicated_error}};
 use lettre::{
     Message, Transport,
     transport::smtp::{
@@ -10,6 +10,7 @@ use lettre::{
 };
 use rocket::{State, http::Status, post, serde::json::Json};
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgQueryResult;
 
 #[derive(Serialize, Deserialize)]
 pub struct RegistrationRequestType {
@@ -23,7 +24,6 @@ pub async fn post(
 ) -> Result<(), Status> {
     // Generate verification token and user id
     let generated_verification_token: String = generate_token(5);
-    let generated_id: String = generate_token(5);
 
 
     // Setting up email message
@@ -84,18 +84,60 @@ pub async fn post(
         }
     }
 
-    // Create a user data with verification token
+    // Create or Update a user data with verification token
     {
-        let raw_user_data = sqlx::query!(
-            "INSERT INTO users(id, email, verification_token) VALUES ($1, $2, $3)",
-            generated_id,
-            registration_data.email,
-            generated_verification_token
+        let raw_user_data = sqlx::query_as!(
+            User,
+            "SELECT * FROM users WHERE email = $1",
+            registration_data.email
         )
-        .execute(db.inner())
+        .fetch_optional(db.inner())
         .await;
 
-        match raw_user_data {
+        let raw_user_data = match raw_user_data {
+            Ok(res) => res,
+            Err(err) => {
+                log::error!(
+                    "There's an error when trying to get user data. Error: {}",
+                    err.to_string()
+                );
+                return Err(Status::InternalServerError);
+            }
+        };
+
+        let raw_query_result: Result<PgQueryResult, sqlx::Error> = match raw_user_data {
+            Some(data) => {
+                // If the user is already registered and has verified before
+                if data.username.is_some() {
+                    return Err(Status::Conflict);
+                }
+                
+                // If the user is already register but hasn't verified yet
+                sqlx::query!(
+                    "UPDATE users SET verification_token = $1 WHERE email = $2",
+                    generated_verification_token,
+                    registration_data.email
+                )
+                .execute(db.inner())
+                .await
+            },
+            None => {
+                // If the user hasn't registered yet
+                let generated_id: String = generate_token(5);
+                sqlx::query!(
+                    "INSERT INTO users(id, email, verification_token) VALUES ($1, $2, $3)",
+                    generated_id,
+                    registration_data.email,
+                    generated_verification_token
+                )
+                .execute(db.inner())
+                .await
+            }
+        };
+        
+        
+
+        match raw_query_result {
             Ok(_) => (),
             Err(err) => {
                 if is_duplicated_error(&err) {
