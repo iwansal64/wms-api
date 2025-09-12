@@ -1,7 +1,7 @@
 #[macro_use] extern crate rocket;
 
 use std::env;
-use gaia_api::{routes, types::WebSocketManager, websocket};
+use wms_api::{routes, types::WebSocketManager, websocket};
 use dotenvy::dotenv;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use tokio::spawn;
@@ -14,7 +14,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
             out.finish(format_args!("({}) [{}] {}", record.level(), chrono::Local::now().format("%H:%M:%S"), message));
         })
         // set a global minimum logging level
-        .level(log::LevelFilter::Warn)
+        .level(log::LevelFilter::Info)
         // add handler for stdout
         .chain(std::io::stdout())
         // add handler for a log file

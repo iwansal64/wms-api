@@ -27,7 +27,7 @@ impl WebSocketManager {
       let mut senders = self.device_senders.write().await;
       senders.insert(room_id.clone(), ws_sender);
     }
-    log::warn!("A new device connection has been added: {}", room_id);
+    log::info!("A new device connection has been added: {}", room_id);
 
     Ok(())
   }
@@ -44,7 +44,7 @@ impl WebSocketManager {
         senders.insert(room_id.clone(), senders_by_addr);
       }
     }
-    log::warn!("A new user connection has been added: {}", room_id);
+    log::info!("A new user connection has been added: {}", room_id);
 
     Ok(())
   }
@@ -101,7 +101,7 @@ impl WebSocketManager {
       }
     };
 
-    log::warn!("CURRENT SENDERS: {:?}", senders_by_addr);
+    log::debug!("CURRENT SENDERS: {:?}", senders_by_addr);
     // Iterate for each senders
     for sender in senders_by_addr.values_mut() {
       // Send message

@@ -276,12 +276,12 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
 
           if client_type == "device" && text.starts_with("data") {
             let data = text.split(":").collect::<Vec<&str>>()[1];
-            log::warn!("Device is currently sending data: {}", data);
+            log::info!("Device is currently sending data: {}", data);
             let send_result = ws_manager.send_user_message(&room_id, data).await;
 
             match send_result {
               Ok(_) => {
-                log::warn!("Data has been successfully sent!");
+                log::info!("Data has been successfully sent!");
               },
               Err(err) => {
                 log::error!("There's an error when trying to send sensor data. Error: {}", err.to_string());
@@ -289,7 +289,7 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
             }
           } 
           else {
-            log::warn!("Get data from a {}: {}", client_type, text);
+            log::info!("Get data from a {}: {}", client_type, text);
           }
         }
       },
