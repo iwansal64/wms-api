@@ -254,11 +254,10 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   let ws_client_address: String = format!("{}:{}", addr.ip(), addr.port());
 
   // Add connection to the list
-  if client_type == "user" {
-    ws_manager.new_user_connection(room_id.clone(), ws_client_address.clone(), ws_write).await.unwrap();
-  }
-  else {
-    ws_manager.new_device_connection(room_id.clone(), ws_write).await.unwrap();
+  match client_type {
+    "user" => ws_manager.new_user_connection(room_id.clone(), ws_client_address.clone(), ws_write).await.unwrap(),
+    "device" => ws_manager.new_device_connection(room_id.clone(), ws_write).await.unwrap(),
+    _ => ()
   }
  
   
