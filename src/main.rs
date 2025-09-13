@@ -105,8 +105,9 @@ async fn rocket() -> _ {
         .mount("/", routes![
             routes::user::this::get,
             routes::user::login::post,
+            routes::user::register_email::post,
             routes::user::verify_email::post,
-            routes::user::registration::post
+            routes::user::create_user::post
         ])
         // Register catchers
         .register("/", catchers![
