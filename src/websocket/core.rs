@@ -308,13 +308,17 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
             }
           };
 
-          if client_type == "device" && text.starts_with("data") {
-            let data = text.split(":").collect::<Vec<&str>>()[1];
+          if let Either::Right(device_data) = &client_data && text.contains("=") {
+            let data = text.split("=").collect::<Vec<&str>>();
+
+            // Append device ID
+            let data = format!("{}={},{}", data[0], device_data.id, data[1]);
+            
             log::info!("Device is currently sending data: {}", data);
-            let send_result: Result<(), String>;
+            let send_result: Result<Option<()>, String>;
             {
               let device_data = client_data.as_ref().expect_right("Makes no sense cause if the client type is 'device' the client data should be a device");
-              send_result = ws_manager.send_user_message(&device_data.id, data).await;
+              send_result = ws_manager.send_user_message(&device_data.id, &data).await;
             }
 
             match send_result {

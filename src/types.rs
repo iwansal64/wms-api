@@ -85,7 +85,7 @@ impl WebSocketManager {
     Ok(())
   }
 
-  pub async fn send_user_message(&self, id: &str, message: &str) -> Result<(), String> {
+  pub async fn send_user_message(&self, id: &str, message: &str) -> Result<Option<()>, String> {
     // Get the senders
     let raw_user_senders = Arc::clone(&self.user_senders);
     let mut write_mode_user_senders = raw_user_senders.write().await;
@@ -98,7 +98,8 @@ impl WebSocketManager {
     let senders_by_addr: &mut HashMap<String, WebSocketSender> = match raw_senders {
       Some(data) => data,
       None => {
-        return Err(format!("There's no recorded web socket connection with ID: {}", id));
+        log::warn!("There's no recorded web socket connection with ID: {}", id);
+        return Ok(None);
       }
     };
 
@@ -121,7 +122,7 @@ impl WebSocketManager {
     }
     
     
-    Ok(())
+    Ok(Some(()))
   }
 
   pub async fn shutdown(&self) -> Result<(), tokio_tungstenite::tungstenite::Error> {
