@@ -23,12 +23,14 @@ pub struct Device {
   pub id: String,
   #[serde(with = "custom_serde::primitive_datetime")]
   pub created_at: PrimitiveDateTime,
-  pub access_token: String
+  pub access_token: String,
+  pub device_name: String,
+  pub description: Option<String>
 }
 
 #[derive(FromRow, Serialize, Deserialize, Clone, Debug)]
 pub struct Connection {
-  pub room_id: String,
+  pub id: String,
   pub user_id: String,
   pub device_id: String
 }

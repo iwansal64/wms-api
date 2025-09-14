@@ -1,10 +1,11 @@
 use std::{collections::HashMap, env, net::SocketAddr, sync::{Arc, Mutex}};
-use futures_util::StreamExt;
+use futures_util::{stream::SplitSink, StreamExt};
 use tokio_tungstenite::{tungstenite::{self, protocol::{frame::coding::CloseCode, CloseFrame}}, WebSocketStream};
-use crate::{model::{User, Connection, Device}, types::WebSocketManager};
+use crate::{model::{Connection, Device, User}, types::{WebSocketManager, WebSocketSender}};
 use http::{Request, Response};
 use sqlx::{Pool, Postgres};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{net::{TcpListener, TcpStream}, sync::RwLock};
+use either::Either;
 
 pub async fn run_websocket_server(ws_manager: WebSocketManager, pool: Pool<Postgres>) {
   // Setting up listener
@@ -89,7 +90,7 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   let mut ws_stream: WebSocketStream<TcpStream> = match ws_stream {
     Ok(ws) => ws,
     Err(err) => {
-      log::error!("There's an error when trying to accept web socket connection to the device. Error: {}", err.to_string());
+      log::error!("There's an error when trying to accept web socket connection to the client. Error: {}", err.to_string());
       return;
     }
   };
@@ -196,35 +197,35 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   
 
   //? Get the connection room id
-  let connection_data: Result<Option<Connection>, sqlx::Error>;
+  let connections_data: Result<Vec<Connection>, sqlx::Error>;
   let client_type: &str;
-  match client_data {
+  match &client_data {
     either::Either::Left(user) => {
       // Get the connection ID query from user data
       client_type = "user";
-      connection_data = sqlx::query_as!(
+      connections_data = sqlx::query_as!(
         Connection,
         "SELECT * FROM connections WHERE user_id = $1",
         user.id
       )
-      .fetch_optional(&pool)
+      .fetch_all(&pool)
       .await;
     },
     either::Either::Right(device) => {
       // Get the connection ID query from device data
       client_type = "device";
-      connection_data = sqlx::query_as!(
+      connections_data = sqlx::query_as!(
         Connection,
         "SELECT * FROM connections WHERE device_id = $1",
         device.id
       )
-      .fetch_optional(&pool)
+      .fetch_all(&pool)
       .await;
     }
   }
 
   //? Check if there's any connection created just yet for the client?
-  let connection_data: Option<Connection> = match connection_data {
+  let connections_data: Vec<Connection> = match connections_data {
     Ok(res) => res,
     Err(err) => {
       log::error!("There's an error when trying to get connection data. Error: {}", err.to_string());
@@ -237,27 +238,28 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   };
 
   //? Fetch the connection ID
-  let room_id: String = match connection_data {
-    Some(data) => data.room_id,
-    None => {
-      log::warn!("No connection formed yet");
-      ws_stream.close(Some(CloseFrame {
-        code: CloseCode::Policy,
-        reason: "You're unauthorized".into()
-      })).await.unwrap();
-      return;
-    }
-  };
+  if connections_data.is_empty() {
+    log::warn!("No connection formed yet");
+    ws_stream.close(Some(CloseFrame {
+      code: CloseCode::Policy,
+      reason: "You're unauthorized".into()
+    })).await.unwrap();
+    return;
+  }
 
 
   let (ws_write, mut ws_read) = ws_stream.split();
   let ws_client_address: String = format!("{}:{}", addr.ip(), addr.port());
 
+  let ws_write: WebSocketSender = Arc::new(RwLock::new(SplitSink::from(ws_write).into()));
+
   // Add connection to the list
-  match client_type {
-    "user" => ws_manager.new_user_connection(room_id.clone(), ws_client_address.clone(), ws_write).await.unwrap(),
-    "device" => ws_manager.new_device_connection(room_id.clone(), ws_write).await.unwrap(),
-    _ => ()
+  for connection_data in &connections_data {
+    match client_type {
+      "user" => ws_manager.new_user_connection(connection_data.device_id.clone(), ws_client_address.clone(), ws_write.clone()).await.unwrap(),
+      "device" => ws_manager.new_device_connection(connection_data.device_id.clone(), ws_write.clone()).await.unwrap(),
+      _ => ()
+    }
   }
  
   
@@ -276,7 +278,11 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
           if client_type == "device" && text.starts_with("data") {
             let data = text.split(":").collect::<Vec<&str>>()[1];
             log::info!("Device is currently sending data: {}", data);
-            let send_result = ws_manager.send_user_message(&room_id, data).await;
+            let send_result: Result<(), String>;
+            {
+              let device_data = client_data.as_ref().expect_right("Makes no sense cause if the client type is 'device' the client data should be a device");
+              send_result = ws_manager.send_user_message(&device_data.id, data).await;
+            }
 
             match send_result {
               Ok(_) => {
@@ -295,7 +301,7 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
       Err(err) => {
         match err {
           tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed | tungstenite::Error::Io(_) => {
-            log::warn!("({}) Conmnection closed", ws_client_address);
+            log::warn!("({}) Connection closed", ws_client_address);
           },
           _ => {
             log::error!("There's an error found in a message. Error: {}", err.to_string());
@@ -306,9 +312,14 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
   }
   
   // After connection closed
-  match client_type {
-    "user" => ws_manager.remove_user_connection(&room_id, &ws_client_address).await.unwrap(),
-    "device" => ws_manager.remove_device_connection(&room_id).await.unwrap(),
-    _ => ()
+  match client_data {
+    Either::Left(_) => {
+      for connection_data in connections_data {
+        ws_manager.remove_user_connection(&connection_data.device_id, &ws_client_address).await.unwrap()
+      }
+    },
+    Either::Right(device_data) => {
+      ws_manager.remove_device_connection(&device_data.id).await.unwrap()
+    }
   }
 }

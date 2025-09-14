@@ -4,7 +4,7 @@ use tokio::{net::TcpStream, sync::RwLock};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 
-pub type WebSocketSender = SplitSink<WebSocketStream<TcpStream>, Message>;
+pub type WebSocketSender = Arc<RwLock<SplitSink<WebSocketStream<TcpStream>, Message>>>;
 
 
 #[derive(Clone)]
@@ -68,7 +68,8 @@ impl WebSocketManager {
     };
 
     // Send message
-    let send_result: Result<(), tokio_tungstenite::tungstenite::Error> = sender.send(Message::Text(message.into())).await;
+    let mut sender_lock = sender.write().await;
+    let send_result: Result<(), tokio_tungstenite::tungstenite::Error> = sender_lock.send(Message::Text(message.into())).await;
 
     
     // Check if there's an error
@@ -103,9 +104,10 @@ impl WebSocketManager {
 
     log::debug!("CURRENT SENDERS: {:?}", senders_by_addr);
     // Iterate for each senders
-    for sender in senders_by_addr.values_mut() {
+    for sender in senders_by_addr.values() {
       // Send message
-      let send_result: Result<(), tokio_tungstenite::tungstenite::Error> = sender.send(Message::Text(message.into())).await;
+      let mut sender_lock = sender.write().await;
+      let send_result: Result<(), tokio_tungstenite::tungstenite::Error> = sender_lock.send(Message::Text(message.into())).await;
 
       // Check if there's an error
       match send_result {
@@ -124,15 +126,17 @@ impl WebSocketManager {
 
   pub async fn shutdown(&self) -> Result<(), tokio_tungstenite::tungstenite::Error> {
     // Shutdown all user web sockets
-    let mut senders_lock = self.user_senders.write().await;
-    for senders_by_addr in senders_lock.values_mut() {
-      for sender in senders_by_addr.values_mut() {
-        sender.close().await?;
+    let senders_lock = self.user_senders.write().await;
+    for senders_by_addr in senders_lock.values() {
+      for sender in senders_by_addr.values() {
+        let mut sender_lock = sender.write().await;
+        sender_lock.close().await?;
       }
     }
     // Shutdown all device web sockets
-    for device_sender in self.device_senders.write().await.values_mut() {
-      device_sender.close().await?;
+    for device_sender in self.device_senders.write().await.values() {
+      let mut device_sender_lock = device_sender.write().await;
+      device_sender_lock.close().await?;
     }
     Ok(())
   }
