@@ -25,7 +25,8 @@ pub struct Device {
   pub created_at: PrimitiveDateTime,
   pub access_token: String,
   pub device_name: String,
-  pub description: Option<String>
+  pub description: Option<String>,
+  pub status: bool
 }
 
 #[derive(FromRow, Serialize, Deserialize, Clone, Debug)]

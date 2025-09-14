@@ -22,29 +22,29 @@ impl WebSocketManager {
     }
   }
 
-  pub async fn new_device_connection(&self, room_id: String, ws_sender: WebSocketSender) -> Result<(), String> {
+  pub async fn new_device_connection(&self, device_id: String, ws_sender: WebSocketSender) -> Result<(), String> {
     {
       let mut senders = self.device_senders.write().await;
-      senders.insert(room_id.clone(), ws_sender);
+      senders.insert(device_id.clone(), ws_sender);
     }
-    log::info!("A new device connection has been added: {}", room_id);
+    log::info!("A new device connection has been added: {}", device_id);
 
     Ok(())
   }
 
-  pub async fn new_user_connection(&self, room_id: String, addr: String, ws_sender: WebSocketSender) -> Result<(), String> {
+  pub async fn new_user_connection(&self, device_id: String, addr: String, ws_sender: WebSocketSender) -> Result<(), String> {
     {
       let mut senders = self.user_senders.write().await;
-      if let Some(senders_by_addr) = senders.get_mut(&room_id) {
+      if let Some(senders_by_addr) = senders.get_mut(&device_id) {
         senders_by_addr.insert(addr, ws_sender);
       }
       else {
         let mut senders_by_addr: HashMap<String, WebSocketSender> = HashMap::new();
         senders_by_addr.insert(addr, ws_sender);
-        senders.insert(room_id.clone(), senders_by_addr);
+        senders.insert(device_id.clone(), senders_by_addr);
       }
     }
-    log::info!("A new user connection has been added: {}", room_id);
+    log::info!("A new user connection has been added: {}", device_id);
 
     Ok(())
   }

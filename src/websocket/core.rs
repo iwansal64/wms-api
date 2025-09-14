@@ -246,14 +246,47 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
     })).await.unwrap();
     return;
   }
+  
+  
+  //? Update device status
+  if let Either::Right(data) = &client_data {
+    // Update device status to all users
+    let send_result = ws_manager.send_user_message(&data.id, format!("status={},1", data.id).as_str()).await;
 
+    match send_result {
+      Ok(_) => (),
+      Err(err) => {
+        log::error!("There's an error when trying to update device status to all users through web socket. Error: {}", err.to_string());
+      }
+    }
+    
+    // Update device status in the database
+    let raw_update_device_status = sqlx::query!(
+      "UPDATE devices SET status = TRUE WHERE id = $1",
+      data.id
+    )
+    .execute(&pool)
+    .await;
+
+    match raw_update_device_status {
+      Ok(_) => (),
+      Err(err) => {
+        log::error!("There's an error when trying to update device status. Error: {}", err.to_string());
+        ws_stream.close(Some(CloseFrame {
+          code: CloseCode::Error,
+          reason: "There's unexpected error. try again.".into()
+        })).await.unwrap();
+        return;
+      }
+    }
+  }
 
   let (ws_write, mut ws_read) = ws_stream.split();
   let ws_client_address: String = format!("{}:{}", addr.ip(), addr.port());
 
   let ws_write: WebSocketSender = Arc::new(RwLock::new(SplitSink::from(ws_write).into()));
-
-  // Add connection to the list
+  
+  //? Add connection to the list
   for connection_data in &connections_data {
     match client_type {
       "user" => ws_manager.new_user_connection(connection_data.device_id.clone(), ws_client_address.clone(), ws_write.clone()).await.unwrap(),
@@ -261,9 +294,9 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
       _ => ()
     }
   }
- 
   
-  // Listen for incoming messages
+    
+  //? Listen for incoming messages
   while let Some(raw_message) = ws_read.next().await {
     match raw_message {
       Ok(message) => {
@@ -319,6 +352,31 @@ async fn handle_websocket_connection(stream: TcpStream, ws_manager: WebSocketMan
       }
     },
     Either::Right(device_data) => {
+      // Update device status to all users
+      let send_result = ws_manager.send_user_message(&device_data.id, format!("status={},0", device_data.id).as_str()).await;
+
+      match send_result {
+        Ok(_) => (),
+        Err(err) => {
+          log::error!("There's an error when trying to update device status to all users through web socket. Error: {}", err.to_string());
+        }
+      }
+
+      // Update device status in the database
+      let raw_update_device_status = sqlx::query!(
+        "UPDATE devices SET status = FALSE WHERE id = $1",
+        device_data.id
+      )
+      .execute(&pool)
+      .await;
+
+      match raw_update_device_status {
+        Ok(_) => (),
+        Err(err) => {
+          log::error!("There's an error when trying to update device status. Error: {}", err.to_string());
+        }
+      }
+
       ws_manager.remove_device_connection(&device_data.id).await.unwrap()
     }
   }
