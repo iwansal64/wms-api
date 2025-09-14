@@ -107,7 +107,8 @@ async fn rocket() -> _ {
             routes::user::login::post,
             routes::user::register_email::post,
             routes::user::verify_email::post,
-            routes::user::create_user::post
+            routes::user::create_user::post,
+            routes::devices::this::get
         ])
         // Register catchers
         .register("/", catchers![
