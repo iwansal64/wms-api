@@ -14,9 +14,9 @@ pub async fn run_websocket_server(ws_manager: WebSocketManager, pool: Pool<Postg
     &addr
   )
   .await
-  .expect(format!("Can't listen to the address wss://{}", addr).as_str());
+  .expect(format!("Can't listen to the address ws://{}", addr).as_str());
 
-  log::warn!("Web Socket listenning to wss://{}", addr);
+  log::warn!("Web Socket listenning to ws://{}", addr);
   
   while let Ok((stream, addr)) = listener.accept().await {
     log::warn!("({}:{}) WebSocket Client Connected", addr.ip(), addr.port());
